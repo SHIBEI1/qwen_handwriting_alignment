@@ -25,13 +25,13 @@ mkdir -p "$stage_dir"
 token="$(<"$token_file")"
 
 api_get() {
-  curl --fail --silent --show-error --retry 5 --retry-all-errors \
+  curl --fail --silent --show-error --retry 5 \
     --connect-timeout 20 -H "Authorization: Bearer $token" \
     -H 'Accept: application/vnd.github+json' "$1"
 }
 
 api_json() {
-  curl --fail --silent --show-error --retry 5 --retry-all-errors \
+  curl --fail --silent --show-error --retry 5 \
     --connect-timeout 20 -H "Authorization: Bearer $token" \
     -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
     -X "$1" "$2" --data "$3"
@@ -88,7 +88,7 @@ upload_asset() {
     return
   fi
   printf 'Uploading %s (%s bytes) ...\n' "$name" "$size"
-  curl --fail --silent --show-error --retry 5 --retry-all-errors \
+  curl --fail --silent --show-error --retry 5 \
     --connect-timeout 20 -H "Authorization: Bearer $token" \
     -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/octet-stream' \
     --data-binary "@$file" "${upload_url}?name=${name}" > "$stage_dir/upload_${name}.json"
