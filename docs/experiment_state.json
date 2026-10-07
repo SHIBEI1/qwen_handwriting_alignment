@@ -1,0 +1,40 @@
+{
+  "completed_phases": [
+    "audit_project",
+    "test_software",
+    "test_quantized_lora",
+    "evaluate_base_probe",
+    "train_sft_smoke",
+    "evaluate_base",
+    "train_sft",
+    "evaluate_sft",
+    "train_grpo_smoke_nocache16_medium",
+    "train_grpo",
+    "evaluate_grpo",
+    "compare_experiments",
+    "audit_final"
+  ],
+  "status": "complete",
+  "waiting_for": null,
+  "remaining_hours": 69.09,
+  "updated_utc": "2026-10-06T02:50:06.719199+00:00",
+  "deadline_utc": "2026-10-06T07:59:05.507817+00:00",
+  "phase": "three_group_comparison",
+  "last_completed": "audit_final",
+  "error": null,
+  "budget_plan": {
+    "evaluation_cases": 64,
+    "evaluation_seeds": [
+      43,
+      20261005
+    ],
+    "sft_epochs": 3,
+    "sft_examples": 512,
+    "estimated_epoch_seconds": 2380.2137004852293,
+    "estimated_evaluation_seconds_per_stage": 1314.1332866042853,
+    "selection_basis": "development/smoke execution time only; fixed final checkpoint; no test selection",
+    "grpo_cycles": 55,
+    "estimated_grpo_cycle_seconds": 1171.27,
+    "grpo_cycle_selection": "User-approved fixed 55-cycle budget on 2026-10-05, set before formal training from the completed 12-cycle runtime validation; not selected using test quality."
+  }
+}

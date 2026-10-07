@@ -1,0 +1,77 @@
+launcher: accelerate
+config_file: null
+num_processes: 1
+mixed_precision: bf16
+data:
+  datasets:
+  - name: handwriting
+    dataset_dir: data/native_subset/sft_smoke
+    image_dir: data/native_subset/sft_smoke
+    train:
+      weight: 1
+  enable_preprocess: true
+  preprocessing_batch_size: 1
+  dataloader_num_workers: 0
+  force_reprocess: false
+  cache_dir: cache/flow_factory
+  sampler_type: auto
+model:
+  finetune_type: lora
+  lora_rank: 16
+  lora_alpha: 32
+  target_modules: default
+  model_name_or_path: models/qwen_image_2_1
+  model_type: handwriting_align.adapter.SingleGPUQwenAdapter
+  trainable_parameters_dtype: fp32
+  component_load_dtypes: bf16
+  resume_path: null
+  resume_type: null
+log:
+  # Keep the RGBA-boundary retry separate from the failed pre-fix smoke artifact.
+  run_name: sft_smoke_rgba
+  project: Qwen-Handwriting-Alignment
+  logging_backend: handwriting_align.logger.MetricJSONLogger
+  save_dir: test_artifacts/gpu_smoke
+  save_freq: 1
+  save_model_only: true
+  verbose: true
+train:
+  trainer_type: sft
+  max_epochs: 1
+  resolution:
+  - 256
+  - 768
+  condition_image_size:
+  - 384
+  - 384
+  guidance_scale: 1.0
+  per_device_batch_size: 1
+  ema_decay: 0.0
+  enable_gradient_checkpointing: true
+  latent_storage_dtype: fp32
+  use_kv_cache: true
+  seed: 20261003
+  gradient_accumulation_steps: 2
+  weighting_scheme: logit_normal
+  num_train_timesteps: 1
+  timestep_range: 0.99
+  time_shift: 1.0
+eval:
+  eval_freq: 0
+  resolution:
+  - 256
+  - 768
+  num_inference_steps: 16
+  guidance_scale: 1.0
+  seed: 43
+optimizers:
+- name: default
+  learning_rate: 5.0e-05
+  weight_decay: 0.0001
+  betas:
+  - 0.9
+  - 0.999
+  eps: 1.0e-08
+  max_grad_norm: 1.0
+scheduler:
+  dynamics_type: ODE

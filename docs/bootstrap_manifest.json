@@ -1,0 +1,15 @@
+{
+  "created_utc": "2026-10-03T07:59:05.507817+00:00",
+  "repositories": {
+    "flow_factory": {
+      "url": "https://github.com/X-GenGroup/Flow-Factory.git",
+      "revision": "f847319079255e8506604bb3aec261fc27708935"
+    },
+    "diffusers": {
+      "url": "https://github.com/huggingface/diffusers.git",
+      "revision": "80c7ed262aeffbeb43ef13ae04baeb9b84515a69"
+    }
+  },
+  "environment_prefix_at_build": "/mnt/Disk1/kl/handwriting_align_env",
+  "python_version": "Python 3.12.14"
+}

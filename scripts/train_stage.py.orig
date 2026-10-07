@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Run an upstream SFT/GRPO stage, verify updates, and export its adapter."""
+
+from __future__ import annotations
+
+import argparse
+import gc
+from datetime import datetime, timezone
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+import time
+
+import torch
+from flow_factory.trainers import load_trainer
+from flow_factory.trainers.common.replay_batching import move_and_stack_samples
+from handwriting_align.config import load_config
+
+
+def parameter_digest(parameters: list[torch.nn.Parameter]) -> str:
+    digest = hashlib.sha256()
+    for parameter in parameters:
+        digest.update(parameter.detach().float().cpu().contiguous().numpy().tobytes())
+    return digest.hexdigest()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("config", type=Path)
+    parser.add_argument("--probe", action="store_true")
+    args = parser.parse_args()
+    logging.getLogger("bitsandbytes.autograd._functions").setLevel(logging.ERROR)
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(args.config)
+    if config.model_args.resume_path:
+        path = (root / config.model_args.resume_path).resolve()
+        if root not in path.parents or not path.is_dir():
+            raise FileNotFoundError("The prior SFT adapter must already exist inside this project")
+    target = root / config.log_args.save_dir / str(config.log_args.run_name)
+    if root not in target.resolve().parents:
+        raise ValueError("Training artifacts must stay inside this project")
+    if config.training_args.trainer_type == "grpo":
+        os.environ["HANDWRITING_REWARD_ARTIFACT_DIR"] = str(target / "reward_probe")
+    start = time.monotonic()
+    torch.cuda.reset_peak_memory_stats()
+    trainer = load_trainer(config)
+    adapter = trainer.adapter
+    parameters = list(adapter._get_component_parameters(adapter.trainable_component_names))
+    before = parameter_digest(parameters)
+    ratio_probe = []
+    advantage_observations = {"count": 0, "nonzero_count": 0, "max_abs": 0.0}
+    if config.training_args.trainer_type == "grpo":
+        original = trainer._replay_forward
+
+        def checked_replay(batch, replay, return_fields):
+            output = original(batch, replay, return_fields)
+            advantages = batch["advantage"].detach().float()
+            if not torch.isfinite(advantages).all():
+                raise RuntimeError("Non-finite GRPO group-relative advantage")
+            advantage_observations["count"] += advantages.numel()
+            advantage_observations["nonzero_count"] += int((advantages.abs() > 1e-6).sum().cpu())
+            advantage_observations["max_abs"] = max(advantage_observations["max_abs"], float(advantages.abs().max().cpu()))
+            if args.probe and len(ratio_probe) < config.scheduler_args.num_sde_steps:
+                old = trainer._require_replay_log_prob(replay, 0)
+                ratio = torch.exp(output.log_prob.detach() - old)
+                error = float((ratio - 1).abs().max().cpu())
+                ratio_probe.append(error)
+                print(f"INITIAL_ON_POLICY_RATIO_ERROR={error}", flush=True)
+                if error > 5e-5:
+                    raise RuntimeError(f"Rollout/replay log-probability mismatch: {error}")
+            return output
+
+        trainer._replay_forward = checked_replay
+        original_optimize = trainer.optimize
+        if config.training_args.offload_samples_to_cpu:
+            def bounded_replay_batches(samples, per_device_batch_size):
+                """Yield one stacked CUDA micro-batch while keeping sources on CPU."""
+                for start_index in range(0, len(samples), per_device_batch_size):
+                    batch = move_and_stack_samples(
+                        samples[start_index : start_index + per_device_batch_size],
+                        trainer.accelerator.device,
+                    )
+                    for sample in batch.samples:
+                        sample.to("cpu", pin_memory=True)
+                    try:
+                        yield batch
+                    finally:
+                        batch.clear()
+                        batch.samples = []
+                        gc.collect()
+                        torch.cuda.empty_cache()
+
+            trainer._iter_prefetched_batches = bounded_replay_batches
+            print("GRPO_REPLAY_TRANSFER=blocking_single_microbatch_source_offload", flush=True)
+        consecutive_zero_cycles = 0
+
+        def checked_optimize(samples):
+            nonlocal consecutive_zero_cycles
+            previous = advantage_observations["nonzero_count"]
+            # Release inactive allocator blocks around the high-water reference
+            # forward. This does not change tensors, weights, or GRPO updates.
+            torch.cuda.empty_cache()
+            try:
+                original_optimize(samples)
+            finally:
+                torch.cuda.empty_cache()
+            consecutive_zero_cycles = consecutive_zero_cycles + 1 if advantage_observations["nonzero_count"] == previous else 0
+            if consecutive_zero_cycles >= 3:
+                raise RuntimeError("Three consecutive GRPO cycles had no relative learning signal; inspect reward_probe")
+
+        trainer.optimize = checked_optimize
+        current = [p.detach().clone() for p in parameters]
+        with adapter.use_ref_parameters():
+            assert all(torch.equal(p, old) for p, old in zip(parameters, current))
+        del current
+    initialization_seconds = time.monotonic() - start
+    optimization_start = time.monotonic()
+    trainer.start()
+    optimization_seconds = time.monotonic() - optimization_start
+    after = parameter_digest(parameters)
+    if config.training_args.trainer_type == "grpo" and advantage_observations["nonzero_count"] == 0:
+        raise RuntimeError("All GRPO group-relative advantages were zero; weight decay alone is not reward learning")
+    if before == after:
+        raise RuntimeError("Training did not change the LoRA weights; this is not a successful training test")
+    target.mkdir(parents=True, exist_ok=True)
+    adapter.save_checkpoint(str(target / "export"), model_only=True, save_ema=False)
+    progress = trainer._get_progress()
+    report = {"completed_utc": datetime.now(timezone.utc).isoformat(), "algorithm": config.training_args.trainer_type,
+              "config": str(args.config), "trainable_parameters": sum(p.numel() for p in parameters),
+              "before_sha256": before, "after_sha256": after, "weights_changed": before != after,
+              "elapsed_seconds": time.monotonic() - start,
+              "initialization_seconds": initialization_seconds, "optimization_seconds": optimization_seconds,
+              "peak_cuda_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
+              "peak_cuda_reserved_gib": torch.cuda.max_memory_reserved() / 2**30,
+              "initial_ratio_max_errors": ratio_probe, "advantage_observations": advantage_observations,
+              "progress": str(progress)}
+    (target / "stage_summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print("STAGE_COMPLETE " + json.dumps(report, ensure_ascii=False), flush=True)
+    trainer.cleanup()
+    if root / "test_artifacts" in target.parents:
+        print(f"TEST_ARTIFACT_DIR={target}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

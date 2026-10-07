@@ -1,0 +1,33 @@
+{
+  "operations": [
+    {
+      "utc": "2026-10-03T08:51:50.081446+00:00",
+      "files": [
+        {
+          "path": "vendor/diffusers/AGENTS.md",
+          "original_target": "vendor/diffusers/.ai/AGENTS.md",
+          "link_type": "symbolic",
+          "sha256": "129f57223acf9e323f5f62733da25a9e1392633dd3724d64d324904cc434ef2c"
+        },
+        {
+          "path": "vendor/diffusers/CLAUDE.md",
+          "original_target": "vendor/diffusers/.ai/AGENTS.md",
+          "link_type": "symbolic",
+          "sha256": "129f57223acf9e323f5f62733da25a9e1392633dd3724d64d324904cc434ef2c"
+        },
+        {
+          "path": "vendor/diffusers/CONTRIBUTING.md",
+          "original_target": "vendor/diffusers/docs/source/en/conceptual/contribution.md",
+          "link_type": "symbolic",
+          "sha256": "ac422154a310522e849cb8259fb14bc6a77a8c3f05d074eafd577a665e15c153"
+        },
+        {
+          "path": "vendor/diffusers/PHILOSOPHY.md",
+          "original_target": "vendor/diffusers/docs/source/en/conceptual/philosophy.md",
+          "link_type": "symbolic",
+          "sha256": "330ee435a7607e953afe569b46eaffb8a4d8a4a5e1119a8b49fbe3d71308649b"
+        }
+      ]
+    }
+  ]
+}

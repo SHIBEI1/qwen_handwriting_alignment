@@ -1,0 +1,23 @@
+# Large, reproducible project assets are preserved in the GitHub Release backup,
+# not in Git object history. See docs/BACKUP_RELEASE.md.
+cache/
+data/
+logs/
+models/
+runs/
+test_artifacts/
+vendor/
+
+# Local Python and editor state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+
+# Archive staging is deliberately outside the project, but keep any accidental
+# local archive copies out of Git as well.
+*.tar
+*.tar.part-*
+SHA256SUMS

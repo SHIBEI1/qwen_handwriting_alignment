@@ -1,0 +1,127 @@
+launcher: accelerate
+config_file: null
+num_processes: 1
+mixed_precision: fp16
+data:
+  datasets:
+  - name: handwriting
+    dataset_dir: data/native_subset/grpo
+    image_dir: data/native_subset/grpo
+    train:
+      weight: 1
+  enable_preprocess: true
+  preprocessing_batch_size: 1
+  dataloader_num_workers: 0
+  force_reprocess: false
+  cache_dir: cache/flow_factory
+  sampler_type: auto
+model:
+  finetune_type: lora
+  lora_rank: 16
+  lora_alpha: 32
+  target_modules: default
+  model_name_or_path: models/qwen_image_2_1
+  model_type: handwriting_align.adapter.SingleGPUQwenAdapter
+  trainable_parameters_dtype: fp32
+  component_load_dtypes: fp16
+  # Exact token-axis execution partitioning of token-independent Transformer
+  # operations; output and gradient contracts were verified before formal use.
+  token_linear_chunk_size: 64
+  # Memory residency changes only: activations/optimizer state move off GPU
+  # between their normal uses. The objective and optimizer math are unchanged.
+  autograd_saved_tensors_to_cpu: true
+  rollout_transformer_grad_mode: true
+  optimizer_state_to_cpu: true
+  resume_path: runs/sft/export
+  resume_type: lora
+log:
+  run_name: grpo
+  project: Qwen-Handwriting-Alignment
+  logging_backend: handwriting_align.logger.MetricJSONLogger
+  save_dir: runs
+  save_freq: 1
+  save_model_only: true
+  verbose: true
+train:
+  trainer_type: grpo
+  # User-approved fixed budget, selected before the formal run from measured
+  # runtime rather than from any test-set quality result.
+  max_epochs: 55
+  resolution:
+  - 256
+  - 768
+  condition_image_size:
+  - 384
+  - 384
+  guidance_scale: 1.0
+  per_device_batch_size: 1
+  ema_decay: 0.0
+  enable_gradient_checkpointing: true
+  # FP32 storage keeps rollout/replay likelihood ratios numerically aligned.
+  latent_storage_dtype: fp32
+  use_kv_cache: false
+  seed: 20261003
+  num_inference_steps: 16
+  group_size: 2
+  unique_sample_num_per_epoch: 2
+  gradient_accumulation_steps: 30
+  num_inner_epochs: 1
+  shuffle_samples: false
+  offload_samples_to_cpu: true
+  advantage_aggregation: sum
+  global_std: false
+  clip_range:
+  - -0.0001
+  - 0.0001
+  adv_clip_range:
+  - -5.0
+  - 5.0
+  kl_type: v-based
+  kl_beta: 0.01
+  ref_param_device: cpu
+eval:
+  eval_freq: 0
+  resolution:
+  - 256
+  - 768
+  num_inference_steps: 16
+  guidance_scale: 1.0
+  seed: 43
+optimizers:
+- name: default
+  learning_rate: 1.0e-05
+  weight_decay: 0.0001
+  betas:
+  - 0.9
+  - 0.999
+  eps: 1.0e-08
+  max_grad_norm: 1.0
+scheduler:
+  dynamics_type: Flow-SDE
+  noise_level: 0.7
+  num_sde_steps: 15
+  sde_steps:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  seed: 20261003
+rewards:
+- name: handwriting
+  reward_model: handwriting_align.rewards.HandwritingReward
+  weight: 1.0
+  device: cpu
+  dtype: float32
+  batch_size: 1
+  async_reward: false
